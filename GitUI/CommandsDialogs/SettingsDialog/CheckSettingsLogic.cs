@@ -1,5 +1,4 @@
 ﻿using GitCommands;
-using GitCommands.Settings;
 using GitCommands.Utils;
 using GitUI.CommandsDialogs.SettingsDialog.Pages;
 using Microsoft.Win32;
@@ -10,7 +9,6 @@ namespace GitUI.CommandsDialogs.SettingsDialog
     {
         public readonly CommonLogic CommonLogic;
         private GitModule? Module => CommonLogic.Module;
-        private ConfigFileSettings GlobalConfigFileSettings => CommonLogic.ConfigFileSettingsSet.GlobalSettings;
 
         public CheckSettingsLogic(CommonLogic commonLogic)
         {
@@ -27,31 +25,31 @@ namespace GitUI.CommandsDialogs.SettingsDialog
             bool valid = SolveGitCommand();
             valid = SolveLinuxToolsDir() && valid;
             valid = SolveGitExtensionsDir() && valid;
-            valid = SolveEditor() && valid;
+            valid = SolveEditor(CommonLogic) && valid;
 
             CommonLogic.ConfigFileSettingsSet.EffectiveSettings.Save();
-            CommonLogic.RepoDistSettingsSet.EffectiveSettings.Save();
+            CommonLogic.DistributedSettingsSet.EffectiveSettings.Save();
 
             return valid;
         }
 
-        private bool SolveEditor()
+        public static bool SolveEditor(CommonLogic commonLogic)
         {
-            string? editor = CommonLogic.GetGlobalEditor();
+            string? editor = commonLogic.GetGlobalEditor();
 
             if (string.IsNullOrEmpty(editor))
             {
-                GlobalConfigFileSettings.SetPathValue("core.editor", EditorHelper.FileEditorCommand);
+                Environment.SetEnvironmentVariable(CommonLogic.AmbientGitEditorEnvVariableName, EditorHelper.FileEditorCommand);
             }
 
             return true;
         }
 
-        public bool SolveLinuxToolsDir(string? possibleNewPath = null)
+        public static bool SolveLinuxToolsDir(string? possibleNewPath = null)
         {
             if (!EnvUtils.RunningOnWindows())
             {
-                AppSettings.GitBinDir = string.Empty;
+                AppSettings.LinuxToolsDir = string.Empty;
                 return true;
             }
 
@@ -69,18 +67,18 @@ namespace GitUI.CommandsDialogs.SettingsDialog
 
                 if (ContainsSh(linuxToolsPath))
                 {
-                    AppSettings.GitBinDir = linuxToolsPath;
+                    AppSettings.LinuxToolsDir = linuxToolsPath;
                     return true;
                 }
 
                 if (CheckIfFileIsInPath("sh.exe") || CheckIfFileIsInPath("sh"))
                 {
-                    if (ContainsSh(AppSettings.GitBinDir))
+                    if (ContainsSh(AppSettings.LinuxToolsDir))
                     {
                         return true;
                     }
 
-                    AppSettings.GitBinDir = string.Empty;
+                    AppSettings.LinuxToolsDir = string.Empty;
                     return true;
                 }
 
@@ -89,7 +87,7 @@ namespace GitUI.CommandsDialogs.SettingsDialog
                     linuxToolsPath = path + toolsPath;
                     if (ContainsSh(gitpath))
                     {
-                        AppSettings.GitBinDir = gitpath;
+                        AppSettings.LinuxToolsDir = gitpath;
                         return true;
                     }
                 }

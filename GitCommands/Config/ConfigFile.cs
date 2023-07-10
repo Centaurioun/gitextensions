@@ -12,11 +12,9 @@ namespace GitCommands.Config
         private readonly List<IConfigSection> _configSections = new();
 
         public string FileName { get; }
-        public bool Local { get; }
 
-        public ConfigFile(string fileName, bool local)
+        public ConfigFile(string fileName)
         {
-            Local = local;
             FileName = fileName;
 
             try
@@ -68,7 +66,7 @@ namespace GitCommands.Config
         {
             try
             {
-                FileInfoExtensions.MakeFileTemporaryWritable(fileName, x => File.WriteAllText(fileName, GetAsString(), GetEncoding()));
+                FileInfoExtensions.MakeFileTemporaryWritable(fileName, file => File.WriteAllText(file, GetAsString(), GetEncoding()));
             }
             catch (Exception ex)
             {

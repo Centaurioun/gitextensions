@@ -30,7 +30,7 @@ namespace GitCommands
         public static string SettingsFilePath => Path.Combine(ApplicationDataPath.Value, SettingsFileName);
         public static string UserPluginsPath => Path.Combine(LocalApplicationDataPath.Value, UserPluginsDirectoryName);
 
-        public static RepoDistSettings SettingsContainer { get; private set; }
+        public static DistributedSettings SettingsContainer { get; private set; }
 
         private static readonly SettingsPath DetailedSettingsPath = new AppSettingsPath("Detailed");
 
@@ -74,7 +74,7 @@ namespace GitCommands
 
             bool newFile = CreateEmptySettingsFileIfMissing();
 
-            SettingsContainer = new RepoDistSettings(null, GitExtSettingsCache.FromCache(SettingsFilePath), SettingLevel.Unknown);
+            SettingsContainer = new DistributedSettings(lowerPriority: null, GitExtSettingsCache.FromCache(SettingsFilePath), SettingLevel.Unknown);
 
             if (newFile || !File.Exists(SettingsFilePath))
             {
@@ -179,7 +179,7 @@ namespace GitCommands
             set => SetBool("RememberAmendCommitState", value);
         }
 
-        public static void UsingContainer(RepoDistSettings settingsContainer, Action action)
+        public static void UsingContainer(DistributedSettings settingsContainer, Action action)
         {
             SettingsContainer.LockedAction(() =>
                 {
@@ -696,7 +696,7 @@ namespace GitCommands
             if (!string.IsNullOrEmpty(ssh))
             {
                 // OpenSSH uses empty path, compatibility with path set in 3.4
-                string path = new SshPathLocator().GetSshFromGitDir(GitBinDir);
+                string path = new SshPathLocator().GetSshFromGitDir(LinuxToolsDir);
                 if (path == ssh)
                 {
                     AppSettings.SshPath = "";
@@ -833,7 +833,7 @@ namespace GitCommands
 
         public static bool SimplifyMergesInFileHistory
         {
-            get => GetBool("simplifymergesinfileHistory", true);
+            get => GetBool("simplifymergesinfileHistory", false);
             set => SetBool("simplifymergesinfileHistory", value);
         }
 
@@ -1189,10 +1189,11 @@ namespace GitCommands
             set => SetBool("showannotatedtagsmessages", value);
         }
 
-        public static bool ShowMergeCommits
+        // Note: The meaning of this value is changed in the GUI, setting name is kept for compatibility
+        public static bool HideMergeCommits
         {
-            get => GetBool("showmergecommits", true);
-            set => SetBool("showmergecommits", value);
+            get => !GetBool("showmergecommits", true);
+            set => SetBool("showmergecommits", !value);
         }
 
         public static bool ShowTags
@@ -1313,22 +1314,15 @@ namespace GitCommands
             set => SetBool("ShowCommitBodyInRevisionGrid", value);
         }
 
-        /// <summary>Gets or sets the path to the git application executable.</summary>
-        public static string GitBinDir
+        /// <summary>Gets or sets the path to the GNU/Linux tools (bash, ps, sh, ssh, etc.), e.g. "C:\Program Files\Git\usr\bin\"</summary>
+        public static string LinuxToolsDir
         {
-            get => GetString("gitbindir", "");
+            // Migrate the setting value from the from the former "gitbindir"
+            get => GetString(nameof(LinuxToolsDir), defaultValue: null) ?? GetString("gitbindir", "");
             set
             {
-                var temp = value.EnsureTrailingPathSeparator();
-                SetString("gitbindir", temp);
-
-                ////if (string.IsNullOrEmpty(_gitBinDir))
-                ////   return;
-                ////
-                ////var path =
-                ////   Environment.GetEnvironmentVariable("path", EnvironmentVariableTarget.Process) + ";" +
-                ////   _gitBinDir;
-                ////Environment.SetEnvironmentVariable("path", path, EnvironmentVariableTarget.Process);
+                string linuxToolsDir = value.EnsureTrailingPathSeparator();
+                SetString(nameof(LinuxToolsDir), linuxToolsDir);
             }
         }
 

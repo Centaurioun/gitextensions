@@ -5,10 +5,10 @@ using GitUIPluginInterfaces;
 
 namespace GitCommands.Settings
 {
+    [DebuggerDisplay("{" + nameof(SettingLevel) + "}: {" + nameof(SettingsCache) + "} << {" + nameof(LowerPriority) + "}")]
     public sealed class ConfigFileSettings : SettingsContainer<ConfigFileSettings, ConfigFileSettingsCache>, IConfigFileSettings, IConfigValueStore
     {
-        public ConfigFileSettings(ConfigFileSettings? lowerPriority, ConfigFileSettingsCache settingsCache,
-            SettingLevel settingLevel)
+        public ConfigFileSettings(ConfigFileSettings? lowerPriority, ConfigFileSettingsCache settingsCache, SettingLevel settingLevel)
             : base(lowerPriority, settingsCache)
         {
             SettingLevel = settingLevel;
@@ -16,28 +16,29 @@ namespace GitCommands.Settings
 
         public static ConfigFileSettings CreateEffective(GitModule module)
         {
-            return CreateLocal(module, CreateGlobal(CreateSystemWide()), SettingLevel.Effective);
+            return CreateLocal(module,
+                CreateGlobal(CreateSystemWide()),
+                SettingLevel.Effective);
         }
 
-        public static ConfigFileSettings CreateLocal(GitModule module, bool allowCache = true)
+        public static ConfigFileSettings CreateLocal(GitModule module, bool useSharedCache = true)
         {
-            return CreateLocal(module, null, SettingLevel.Local, allowCache);
+            return CreateLocal(module, lowerPriority: null, SettingLevel.Local, useSharedCache);
         }
 
-        private static ConfigFileSettings CreateLocal(GitModule module, ConfigFileSettings? lowerPriority,
-            SettingLevel settingLevel, bool allowCache = true)
+        private static ConfigFileSettings CreateLocal(GitModule module, ConfigFileSettings? lowerPriority, SettingLevel settingLevel, bool useSharedCache = true)
         {
             return new ConfigFileSettings(lowerPriority,
-                ConfigFileSettingsCache.Create(Path.Combine(module.GitCommonDirectory, "config"), true, allowCache),
+                ConfigFileSettingsCache.Create(Path.Combine(module.GitCommonDirectory, "config"), useSharedCache),
                 settingLevel);
         }
 
-        public static ConfigFileSettings CreateGlobal(bool allowCache = true)
+        public static ConfigFileSettings CreateGlobal(bool useSharedCache = true)
         {
-            return CreateGlobal(null, allowCache);
+            return CreateGlobal(lowerPriority: null, useSharedCache);
         }
 
-        public static ConfigFileSettings CreateGlobal(ConfigFileSettings? lowerPriority, bool allowCache = true)
+        public static ConfigFileSettings CreateGlobal(ConfigFileSettings? lowerPriority, bool useSharedCache = true)
         {
             string configPath = Path.Combine(EnvironmentConfiguration.GetHomeDir(), ".config", "git", "config");
             if (!File.Exists(configPath))
@@ -45,26 +46,28 @@ namespace GitCommands.Settings
                 configPath = Path.Combine(EnvironmentConfiguration.GetHomeDir(), ".gitconfig");
             }
 
-            return new ConfigFileSettings(lowerPriority, ConfigFileSettingsCache.Create(configPath, false, allowCache),
+            return new ConfigFileSettings(lowerPriority,
+                ConfigFileSettingsCache.Create(configPath, useSharedCache),
                 SettingLevel.Global);
         }
 
-        public static ConfigFileSettings? CreateSystemWide(bool allowCache = true)
+        public static ConfigFileSettings? CreateSystemWide(bool useSharedCache = true)
         {
             // Git 2.xx
             string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Git", "config");
             if (!File.Exists(configPath))
             {
                 // Git 1.xx
-                configPath = Path.Combine(AppSettings.GitBinDir, "..", "etc", "gitconfig");
+                configPath = Path.Combine(AppSettings.GitCommand, "..", "..", "etc", "gitconfig");
                 if (!File.Exists(configPath))
                 {
                     return null;
                 }
             }
 
-            return new ConfigFileSettings(null,
-                ConfigFileSettingsCache.Create(configPath, false, allowCache), SettingLevel.SystemWide);
+            return new ConfigFileSettings(lowerPriority: null,
+                ConfigFileSettingsCache.Create(configPath, useSharedCache),
+                SettingLevel.SystemWide);
         }
 
         public new string GetValue(string setting)

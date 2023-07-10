@@ -10,13 +10,16 @@ namespace GitUI.CommandsDialogs.SettingsDialog
 {
     public sealed class CommonLogic : Translate
     {
+        internal const string PresetGitEditorEnvVariableName = "GIT_EDITOR";
+        internal const string AmbientGitEditorEnvVariableName = "EDITOR";
+
         private static readonly TranslationString _cantReadRegistry =
             new("Git Extensions has insufficient permissions to check the registry.");
 
         private readonly TranslationString _selectFile =
             new("Select file");
 
-        public readonly RepoDistSettingsSet RepoDistSettingsSet;
+        public readonly DistributedSettingsSet DistributedSettingsSet;
         public readonly ConfigFileSettingsSet ConfigFileSettingsSet;
         public readonly GitModule Module;
 
@@ -24,8 +27,6 @@ namespace GitUI.CommandsDialogs.SettingsDialog
         {
             // For translation only
             Module = null!;
-            RepoDistSettingsSet = null!;
-            ConfigFileSettingsSet = null!;
         }
 
         public CommonLogic(GitModule module)
@@ -34,24 +35,26 @@ namespace GitUI.CommandsDialogs.SettingsDialog
 
             Module = module;
 
-            var repoDistGlobalSettings = RepoDistSettings.CreateGlobal(false);
-            var repoDistPulledSettings = RepoDistSettings.CreateDistributed(module, false);
-            var repoDistLocalSettings = RepoDistSettings.CreateLocal(module, false);
-            RepoDistSettings repoDistEffectiveSettings = new(
-                new RepoDistSettings(repoDistGlobalSettings, repoDistPulledSettings.SettingsCache, SettingLevel.Distributed),
-                repoDistLocalSettings.SettingsCache,
+            DistributedSettings distributedGlobalSettings = DistributedSettings.CreateGlobal(useSharedCache: false);
+            DistributedSettings distributedPulledSettings = DistributedSettings.CreateDistributed(module, useSharedCache: false);
+            DistributedSettings distributedLocalSettings = DistributedSettings.CreateLocal(module, useSharedCache: false);
+            DistributedSettings distributedEffectiveSettings = new(
+                new DistributedSettings(distributedGlobalSettings, distributedPulledSettings.SettingsCache, SettingLevel.Distributed),
+                distributedLocalSettings.SettingsCache,
                 SettingLevel.Effective);
 
-            var configFileGlobalSettings = ConfigFileSettings.CreateGlobal(false);
-            var configFileLocalSettings = ConfigFileSettings.CreateLocal(module, false);
+            ConfigFileSettings configFileGlobalSettings = ConfigFileSettings.CreateGlobal(useSharedCache: false);
+            ConfigFileSettings configFileLocalSettings = ConfigFileSettings.CreateLocal(module, useSharedCache: false);
             ConfigFileSettings configFileEffectiveSettings = new(
-                configFileGlobalSettings, configFileLocalSettings.SettingsCache, SettingLevel.Effective);
+                configFileGlobalSettings,
+                configFileLocalSettings.SettingsCache,
+                SettingLevel.Effective);
 
-            RepoDistSettingsSet = new RepoDistSettingsSet(
-                repoDistEffectiveSettings,
-                repoDistLocalSettings,
-                repoDistPulledSettings,
-                repoDistGlobalSettings);
+            DistributedSettingsSet = new DistributedSettingsSet(
+                distributedEffectiveSettings,
+                distributedLocalSettings,
+                distributedPulledSettings,
+                distributedGlobalSettings);
 
             ConfigFileSettingsSet = new ConfigFileSettingsSet(
                 configFileEffectiveSettings,
@@ -71,7 +74,7 @@ namespace GitUI.CommandsDialogs.SettingsDialog
             string? value = null;
             try
             {
-                var registryKey = root.OpenSubKey(subkey, writable: false);
+                RegistryKey? registryKey = root.OpenSubKey(subkey, writable: false);
 
                 if (registryKey is not null)
                 {
@@ -95,10 +98,10 @@ namespace GitUI.CommandsDialogs.SettingsDialog
 
             IEnumerable<string> GetEditorOptions()
             {
-                yield return Environment.GetEnvironmentVariable("GIT_EDITOR");
+                yield return Environment.GetEnvironmentVariable(PresetGitEditorEnvVariableName);
                 yield return ConfigFileSettingsSet.GlobalSettings.GetValue("core.editor");
                 yield return Environment.GetEnvironmentVariable("VISUAL");
-                yield return Environment.GetEnvironmentVariable("EDITOR");
+                yield return Environment.GetEnvironmentVariable(AmbientGitEditorEnvVariableName);
             }
         }
 
@@ -113,7 +116,7 @@ namespace GitUI.CommandsDialogs.SettingsDialog
             return dialog.ShowDialog() == DialogResult.OK ? dialog.FileName : prev;
         }
 
-        public void FillEncodings(ComboBox combo)
+        public static void FillEncodings(ComboBox combo)
         {
             combo.Items.AddRange(AppSettings.AvailableEncodings.Values.ToArray<object>());
             combo.DisplayMember = nameof(Encoding.EncodingName);

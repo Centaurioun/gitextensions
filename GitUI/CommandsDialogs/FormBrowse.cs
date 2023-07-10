@@ -204,7 +204,7 @@ namespace GitUI.CommandsDialogs
         #endregion
 
         private readonly uint _closeAllMessage = NativeMethods.RegisterWindowMessageW("Global.GitExtensions.CloseAllInstances");
-        private readonly SplitterManager _splitterManager = new(new AppSettingsPath("FormBrowse"));
+        private readonly SplitterManager _splitterManager;
         private readonly GitStatusMonitor _gitStatusMonitor;
         private readonly FormBrowseMenus _formBrowseMenus;
         private readonly IFormBrowseController _controller;
@@ -246,8 +246,18 @@ namespace GitUI.CommandsDialogs
         /// <param name="commands">The commands in the current form.</param>
         /// <param name="args">The start up arguments.</param>
         public FormBrowse(GitUICommands commands, BrowseArguments args)
+#pragma warning disable CS0618 // Type or member is obsolete
+            : this(commands, args, new AppSettingsPath("FormBrowse"))
+#pragma warning restore CS0618 // Type or member is obsolete
+        {
+        }
+
+        [Obsolete("Test only!")]
+        internal FormBrowse(GitUICommands commands, BrowseArguments args, ISettingsSource settingsSource)
             : base(commands)
         {
+            _splitterManager = new(settingsSource);
+
             SystemEvents.SessionEnding += (sender, args) => SaveApplicationSettings();
 
             _isFileBlameHistory = args.IsFileBlameHistory;
@@ -277,8 +287,6 @@ namespace GitUI.CommandsDialogs
                 PluginRegistry.Initialize();
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 RegisterPlugins();
-                revisionDiff.RegisterGitHostingPluginInBlameControl();
-                fileTree.RegisterGitHostingPluginInBlameControl();
             }).FileAndForget();
 
             InitCountArtificial(out _gitStatusMonitor);
@@ -317,11 +325,11 @@ namespace GitUI.CommandsDialogs
 
             _aheadBehindDataProvider = new AheadBehindDataProvider(() => Module.GitExecutable);
             toolStripButtonPush.Initialize(_aheadBehindDataProvider);
-            repoObjectsTree.Initialize(_aheadBehindDataProvider, filterRevisionGridBySpaceSeparatedRefs: ToolStripFilters.SetBranchFilter, RevisionGrid, RevisionGrid, RevisionGrid);
-            revisionDiff.Bind(RevisionGrid, fileTree, RefreshGitStatusMonitor);
+            repoObjectsTree.Initialize(_aheadBehindDataProvider, filterRevisionGridBySpaceSeparatedRefs: ToolStripFilters.SetBranchFilter, refsSource: RevisionGrid, revisionGridInfo: RevisionGrid, scriptRunner: RevisionGrid);
+            revisionDiff.Bind(revisionGridInfo: RevisionGrid, revisionGridUpdate: RevisionGrid, revisionFileTree: fileTree, () => RevisionGrid.CurrentFilter.PathFilter, RefreshGitStatusMonitor);
 
             // Show blame by default if not started from command line
-            fileTree.Bind(RevisionGrid, RefreshGitStatusMonitor, _isFileBlameHistory);
+            fileTree.Bind(revisionGridInfo: RevisionGrid, revisionGridUpdate: RevisionGrid, RefreshGitStatusMonitor, _isFileBlameHistory);
             RevisionGrid.ResumeRefreshRevisions();
 
             // Application is init, the repo related operations are triggered in OnLoad()
@@ -548,7 +556,7 @@ namespace GitUI.CommandsDialogs
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == _closeAllMessage || (m.Msg == NativeMethods.WM_SYSCOMMAND && m.WParam == NativeMethods.SC_CLOSE))
+            if (m.Msg == _closeAllMessage || m is { Msg: NativeMethods.WM_SYSCOMMAND, WParam: NativeMethods.SC_CLOSE })
             {
                 // Application close is requested, e.g. using the Taskbar context menu.
                 // This request is directed to the main form also if a modal form like FormCommit is on top.
@@ -587,7 +595,7 @@ namespace GitUI.CommandsDialogs
             }
         }
 
-        private bool NeedsGitStatusMonitor()
+        private static bool NeedsGitStatusMonitor()
         {
             return AppSettings.ShowGitStatusInBrowseToolbar || (AppSettings.ShowGitStatusForArtificialCommits && AppSettings.RevisionGraphShowArtificialCommits);
         }
@@ -1352,7 +1360,7 @@ namespace GitUI.CommandsDialogs
 
         private void ResetToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            UICommands.StartResetChangesDialog(this);
+            UICommands.StartResetChangesDialog(this, Module.GetWorkTreeFiles(), onlyWorkTree: false);
             RefreshGitStatusMonitor();
             revisionDiff.RefreshArtificial();
         }
@@ -1710,6 +1718,9 @@ namespace GitUI.CommandsDialogs
             }
 
             RegisterPlugins();
+
+            revisionDiff.RegisterGitHostingPluginInBlameControl();
+            fileTree.RegisterGitHostingPluginInBlameControl();
         }
 
         private void FileExplorerToolStripMenuItemClick(object sender, EventArgs e)
@@ -2413,7 +2424,7 @@ namespace GitUI.CommandsDialogs
             return item;
         }
 
-        private void UpdateSubmoduleMenuItemStatus(ToolStripItem item, SubmoduleInfo info, string textFormat = "{0}")
+        private static void UpdateSubmoduleMenuItemStatus(ToolStripItem item, SubmoduleInfo info, string textFormat = "{0}")
         {
             if (info.Detailed is not null)
             {
@@ -2567,9 +2578,9 @@ namespace GitUI.CommandsDialogs
                     continue;
                 }
 
-                if (infos.ContainsKey(path))
+                if (infos.TryGetValue(path, out SubmoduleInfo? info))
                 {
-                    UpdateSubmoduleMenuItemStatus(item, infos[path]);
+                    UpdateSubmoduleMenuItemStatus(item, info);
                 }
                 else
                 {
@@ -2906,6 +2917,7 @@ namespace GitUI.CommandsDialogs
             public RevisionGridControl RevisionGrid => _form.RevisionGridControl;
             public SplitContainer RevisionsSplitContainer => _form.RevisionsSplitContainer;
             public SplitContainer RightSplitContainer => _form.RightSplitContainer;
+            public SplitterManager SplitterManager => _form._splitterManager;
             public TabPage TreeTabPage => _form.TreeTabPage;
             public FilterToolBar ToolStripFilters => _form.ToolStripFilters;
         }
@@ -2958,7 +2970,7 @@ namespace GitUI.CommandsDialogs
             bool IsFileExistingInRepo([NotNullWhen(returnValue: true)] string? path) => IsPathExists(path) && path.StartsWith(Module.WorkingDir, StringComparison.InvariantCultureIgnoreCase);
         }
 
-        private void FormBrowse_DragEnter(object sender, DragEventArgs e)
+        private static void FormBrowse_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop)
                 || e.Data.GetDataPresent(DataFormats.Text)
