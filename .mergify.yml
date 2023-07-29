@@ -12,7 +12,6 @@ pull_request_rules:
         allow_merging_configuration_change: true
         autosquash: true
         commit_message_template: null
-        require_branch_protection: false
         update_bot_account: null
         update_method: null
   - name: automatic merge for Dependabot pull requests
